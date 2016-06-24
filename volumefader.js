@@ -1,6 +1,6 @@
 /**
  * VolumeFader
- * Proper Media Volume Fading
+ * Sophisticated Media Volume Fading
  *
  * Requires browser support for:
  * - HTMLMediaElement
@@ -32,30 +32,7 @@
         else
         {
             // abort and throw an exception
-            throw new TypeError( "Number between 0 and 1 expected for volume!" )
-        }
-    }
-
-
-    // internal utility: exponential scaler with 30 dB dynamic range (smallest value above zero is 0.001)
-    // (the input 0…1 is interpreted as logarithmic volume and expanded to a linear scale 0…1)
-    let exponentialScaler = ( logarithmic ) =>
-    {
-        // special case: make zero return zero
-        if ( logarithmic == 0 )
-        {
-            // since the dynamic range is limited,
-            // allow a zero to produce a plain zero instead of a small faction
-            // (audio would not be recognized as silent otherwise)
-            return 0
-        }
-        else
-        {
-            // scale to -30 dB
-            logarithmic = ( logarithmic - 1 ) * 3
-
-            // compute power of 10
-            return Math.pow( 10, logarithmic )
+            throw new TypeError( "Number between 0 and 1 expected as volume!" )
         }
     }
 
@@ -71,10 +48,10 @@
          * @throws {TypeError} if options.initialVolume or options.fadeDuration are invalid
          *
          * options:
-         * .logger: {Function} logging `function(stuff, …)` for execution information
-         * .volumeScaler: {Function} scaling `function(value)` used to map fade levels 0…1 to volume levels 0…1
-         * .initialVolume: {Number} media volume 0…1 to apply during setup
-         * .fadeDuration: {Number} time in milliseconds to complete a fade
+         * .logger: {Function} logging `function(stuff, …)` for execution information (default: no logging)
+         * .fadeScaling: {Mixed} either 'linear', 'logarithmic' or a positive number in dB (default: logarithmic)
+         * .initialVolume: {Number} media volume 0…1 to apply during setup (volume not touched by default)
+         * .fadeDuration: {Number} time in milliseconds to complete a fade (default: 1000 ms)
          */
         constructor( media, options )
         {
@@ -94,13 +71,10 @@
             options = options || {}
 
             // log function passed?
-            if ( options.logger instanceof Function )
+            if ( typeof options.logger == 'function' )
             {
-                // set log function
+                // set log function to the one specified
                 this.logger = options.logger
-
-                // log setting
-                this.logger && this.logger( "[VolumeFader] Using custom logger:", this.logger )
             }
             else
             {
@@ -108,42 +82,63 @@
                 this.logger = false
             }
 
-            // volume scaling function given?
-            if ( options.volumeScaler !== undefined )
+            // linear volume fading?
+            if ( options.fadeScaling == 'linear' )
             {
-                // valid function?
-                if ( options.volumeScaler instanceof Function )
-                {
-                    // set volume scaler
-                    this.volumeScaler = options.volumeScaler
-
-                    // log setting
-                    this.logger && this.logger( "[VolumeFader] Using custom volume scaler:", this.volumeScaler )
+                // pass levels unchanged
+                this.scale = {
+                    linearToVolume: (level) => level,
+                    volumeToLinear: (level) => level
                 }
+
+                // log setting
+                this.logger && this.logger( "Using linear fading." )
+            }
+            // no linear, but logarithmic fading…
+            else
+            {
+                let dynamicRange
+
+                // default dynamic range?
+                if ( options.fadeScaling === undefined || options.fadeScaling == 'logarithmic' )
+                {
+                    // set default of 30 dB
+                    dynamicRange = 3
+                }
+                // custom dynamic range?
+                else if ( ! Number.isNaN( options.fadeScaling ) && options.fadeScaling > 0 )
+                {
+                    // turn dB into a multiple of 10 dB
+                    dynamicRange = options.fadeScaling / 10
+                }
+                // unsupported value
                 else
                 {
                     // abort and throw exception
-                    throw new TypeError( "Expected function for volume scaler!" )
+                    throw new TypeError( "Expected 'linear', 'logarithmic' or a positive number as fade scaling preference!" )
                 }
-            }
-            // no custom scaler defined?
-            else
-            {
-                // use default scaler (exponential with limited dynamic range)
-                this.volumeScaler = exponentialScaler
+
+                // use exponential/logarithmic scaler for expansion/compression
+                this.scale = {
+                    linearToVolume: (level) => this.exponentialScaler( level, dynamicRange ),
+                    volumeToLinear: (level) => this.logarithmicScaler( level, dynamicRange )
+                }
+
+                // log setting if not default
+                options.fadeScaling && this.logger && this.logger( "Using logarithmic fading with " + String( 10 * dynamicRange ) + " dB dynamic range." )
             }
 
-            // initial volume given?
+            // set initial volume?
             if ( options.initialVolume !== undefined )
             {
                 // validate volume level and throw if invalid
                 validateVolumeLevel( options.initialVolume )
 
                 // set initial volume
-                this.media.volume = this.volumeScaler( options.initialVolume )
+                this.media.volume = options.initialVolume
 
                 // log setting
-                this.logger && this.logger( "[VolumeFader] Set initial volume to " + String(this.media.volume) + "." )
+                this.logger && this.logger( "Set initial volume to " + String(this.media.volume) + "." )
             }
 
             // fade duration given?
@@ -154,19 +149,24 @@
             }
             else
             {
-                // set default fade duration (500 ms)
-                this.fadeDuration = 500
+                // set default fade duration (1000 ms)
+                this.fadeDuration = 1000
             }
 
             // indicate that fader is not active yet
             this.active = false
 
             // initialization done
-            this.logger && this.logger( "[VolumeFader] Initialized for", this.media )
+            this.logger && this.logger( "Initialized for", this.media )
         }
 
 
-        // (re)start update cycle (must be running for volume updates)
+        /**
+         * Re(start) the update cycle.
+         * (this.active must be truthy for volume updates to take effect)
+         *
+         * @return {Object} VolumeFader instance for chaining
+         */
         start()
         {
             // set fader to be active
@@ -179,7 +179,13 @@
             return this
         }
 
-        // stop update cycle (interrupting any fade)
+
+        /**
+         * Stop the update cycle.
+         * (interrupting any fade)
+         *
+         * @return {Object} VolumeFader instance for chaining
+         */
         stop()
         {
             // set fader to be inactive
@@ -190,7 +196,14 @@
         }
 
 
-        // set fade duration
+        /**
+         * Set fade duration.
+         * (used for future calls to fadeTo)
+         *
+         * @param {Number} fadeDuration - fading length in milliseconds
+         * @throws {TypeError} if fadeDuration is not a number greater than zero
+         * @return {Object} VolumeFader instance for chaining
+         */
         setFadeDuration( fadeDuration )
         {
             // if duration is a valid number > 0…
@@ -200,12 +213,12 @@
                 this.fadeDuration = fadeDuration
 
                 // log setting
-                this.logger && this.logger( "[VolumeFader] Set fade duration to " + String(fadeDuration) + " ms." )
+                this.logger && this.logger( "Set fade duration to " + String(fadeDuration) + " ms." )
             }
             else
             {
                 // abort and throw an exception
-                throw new TypeError( "Positive number expected for fade duration!" )
+                throw new TypeError( "Positive number expected as fade duration!" )
             }
 
             // return instance for chaining
@@ -213,7 +226,57 @@
         }
 
 
-        // update media volume (calls itself using a timer)
+        /**
+         * Define a new fade and start fading.
+         *
+         * @param {Number} targetVolume - linear level to fade to (0…1)
+         * @param {Function} callback - (optional) function to be called when fade is complete
+         * @return {Object} VolumeFader instance for chaining
+         */
+        fadeTo( targetVolume, callback )
+        {
+            // validate volume and throw if invalid
+            validateVolumeLevel( targetVolume )
+
+            // define new fade
+            this.fade =
+            {
+                // volume start and end point on linear scale
+                volume: {
+                    start: this.scale.volumeToLinear( this.media.volume ),
+                    end: this.scale.volumeToLinear( targetVolume )
+                },
+                // time start and end point
+                time: {
+                    start: Date.now(),
+                    end: Date.now() + this.fadeDuration
+                },
+                // optional callback function
+                callback: callback
+            }
+
+            // start fading
+            this.start()
+
+            // log new fade
+            this.logger && this.logger( "New fade started:", this.fade )
+
+            // return instance for chaining
+            return this
+        }
+
+        // convenience shorthand methods for common fades
+        fadeIn( callback ) { this.fadeTo( 1, callback ) }
+        fadeOut( callback ) { this.fadeTo( 0, callback ) }
+
+
+        /**
+         * Internal: Update media volume.
+         * (calls itself through requestAnimationFrame)
+         *
+         * @param {Number} targetVolume - linear level to fade to (0…1)
+         * @param {Function} callback - (optional) function to be called when fade is complete
+         */
         updateVolume()
         {
             // fader active and fade available to process?
@@ -228,11 +291,11 @@
                     // compute current fade progress
                     let progress = ( now - this.fade.time.start ) / ( this.fade.time.end - this.fade.time.start )
 
-                    // compute current level
+                    // compute current linear level
                     let level = progress * ( this.fade.volume.end - this.fade.volume.start ) + this.fade.volume.start
 
-                    // scale fade level to native linear volume and apply to media element
-                    this.media.volume = this.volumeScaler( level )
+                    // scale fade level to volume level and apply to media element
+                    this.media.volume = this.scale.linearToVolume( level )
 
                     // schedule next update
                     root.requestAnimationFrame( this.updateVolume.bind( this ) )
@@ -240,55 +303,76 @@
                 else
                 {
                     // log end of fade
-                    this.logger && this.logger( "[VolumeFader] Fade to " + String(this.fade.volume.end) + " complete." )
+                    this.logger && this.logger( "Fade to " + String(this.fade.volume.end) + " complete." )
 
                     // time is up, jump to target volume
-                    this.media.volume = this.volumeScaler( this.fade.volume.end )
+                    this.media.volume = this.scale.linearToVolume( this.fade.volume.end )
 
                     // set fader to be inactive
                     this.active = false
 
                     // done, call back (if callable)
-                    this.fade.callback instanceof Function && this.fade.callback()
+                    typeof this.fade.callback == 'function' && this.fade.callback()
 
                     // clear fade
                     this.fade = undefined
                 }
             }
-
-            // return instance for chaining
-            return this
         }
 
 
-        // define new fade
-        fadeTo( targetVolume, callback )
+        /**
+         * Internal: Exponential scaler with dynamic range limit.
+         *
+         * @param {Number} input - logarithmic input level to be expanded (float, 0…1)
+         * @param {Number} dynamicRange - expanded output range, in multiples of 10 dB (float, 0…∞)
+         * @return {Number} - expanded level (float, 0…1)
+         */
+        exponentialScaler( input, dynamicRange )
         {
-            // validate volume and throw if invalid
-            validateVolumeLevel( targetVolume )
-
-            // define new fade towards a given volume with an optional callback
-            this.fade =
+            // special case: make zero (or any falsy input) return zero
+            if ( input == 0 )
             {
-                volume: { start: this.media.volume, end: targetVolume },
-                time: { start: Date.now(), end: Date.now() + this.fadeDuration },
-                callback: callback
+                // since the dynamic range is limited,
+                // allow a zero to produce a plain zero instead of a small faction
+                // (audio would not be recognized as silent otherwise)
+                return 0
             }
+            else
+            {
+                // scale 0…1 to minus something × 10 dB
+                input = ( input - 1 ) * dynamicRange
 
-            // log new fade
-            this.logger && this.logger( "[VolumeFader] New fade:", this.fade )
-
-            // start fading
-            this.start()
-
-            // return instance for chaining
-            return this
+                // compute power of 10
+                return Math.pow( 10, input )
+            }
         }
 
 
-        // convenience methods for complete fades
-        fadeIn( callback ) { this.fadeTo( 1, callback ) }
-        fadeOut( callback ) { this.fadeTo( 0, callback ) }
+        /**
+         * Internal: Logarithmic scaler with dynamic range limit.
+         *
+         * @param {Number} input - exponential input level to be compressed (float, 0…1)
+         * @param {Number} dynamicRange - coerced input range, in multiples of 10 dB (float, 0…∞)
+         * @return {Number} - compressed level (float, 0…1)
+         */
+        logarithmicScaler( input, dynamicRange )
+        {
+            // special case: make zero (or any falsy input) return zero
+            if ( input == 0 )
+            {
+                // logarithm of zero would be -∞, which would map to zero anyway
+                return 0
+            }
+            else
+            {
+                // compute base-10 logarithm
+                input = Math.log10( input )
+
+                // scale minus something × 10 dB to 0…1 (clipping at 0)
+                return Math.max( ( 1 + input / dynamicRange ), 0 )
+            }
+        }
     }
 
 
