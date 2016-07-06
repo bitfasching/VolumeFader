@@ -12,7 +12,7 @@
  * License: MIT
  *
  * Nick Schwarzenberg
- * v0.2.0, 06/2016
+ * v0.2.0, 07/2016
  */
 
 ;(function( root ){
@@ -102,14 +102,14 @@
                 // default dynamic range?
                 if ( options.fadeScaling === undefined || options.fadeScaling == 'logarithmic' )
                 {
-                    // set default of 30 dB
+                    // set default of 60 dB
                     dynamicRange = 3
                 }
                 // custom dynamic range?
                 else if ( ! Number.isNaN( options.fadeScaling ) && options.fadeScaling > 0 )
                 {
-                    // turn dB into a multiple of 10 dB
-                    dynamicRange = options.fadeScaling / 10
+                    // turn amplitude dB into a multiple of 10 power dB
+                    dynamicRange = options.fadeScaling / 2 / 10
                 }
                 // unsupported value
                 else
