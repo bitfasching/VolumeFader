@@ -1,6 +1,6 @@
 # VolumeFader
 
-*Sophisticated media volume fading in ES6 (JavaScript)*
+*Sophisticated HTML5 media volume fading in ES6 (JavaScript)*
 
 The class *VolumeFader* allows to make soft volume changes on HTML5 media elements. This is useful, for instance, to avoid hard volume breaks when pausing a song, or to fade in and out a looping sample.
 
@@ -22,6 +22,11 @@ Start playing and use the fader to smoothly fade in:
 ```
 media.play()
 Fader.fadeIn()
+```
+
+Fade out and stop playback when done:
+```
+Fader.fadeOut( () => media.pause() )
 ```
 
 The *VolumeFader* offers plenty options for customization, see the detailed documentation below.
@@ -46,7 +51,7 @@ The following *options* are available:
 
 If *fadeScaling* is set to "linear", the media's amplitude is not rescaled while fading. The keyword "logarithmic" uses a natural logarithmic scale and defaults to 60 dB dynamic range. This is equivalent to the number 60. If *fadeScaling* is not set, a 60 dB logarithmic scale is used as default. See section “Logarithmic Fading” for background information on logarithmic scales.
 
-### Common Instance Methods
+### Common Methods
 
 The following methods can be called on a *VolumeFader* instance:
 
@@ -57,15 +62,17 @@ The following methods can be called on a *VolumeFader* instance:
 - Returns the *VolumeFader* instance for chaining.
 
 ###### .fadeTo( *targetVolume*, *callback* )
-- Starts a new fade to the specified volume level and fires a callback when done.
+- Sets up a new fade to the specified volume level and fires the callback when complete.
 - *targetVolume* `Number` A floating point [volume](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volume) level ∈ [0,1] in linear scale.
-- *callback* `Function` (optional) A function to call when the fade is complete.
+- *callback* `Function` (optional) A function to call when the fade is completed. The reference is type-checked just before calling, no error occurs if it's not a valid function at callback time.
 - Returns the *VolumeFader* instance for chaining.
 
 ###### .fadeIn( *callback* ) & .fadeOut( *callback* )
 - These are shorthands for fading to maximum and minimum volume. This is equivalent to calling *fadeTo()* with *targetVolume* set to 1 and 0, respectively.
 - *callback* is passed through, see *fadeTo()*.
 - Returns the *VolumeFader* instance for chaining.
+
+If *fadeTo()*, *fadeIn()* or *fadeOut()* is called while another fade is in progress, the previously active fade is replaced. The new fade will move to the specified target volume from whatever the media's volume is at that time and will run for the configured fade duration. The old callback will not be fired.
 
 It is not recommended to change any of a *VolumeFader* instance's properties directly without using one of the documented methods. These methods include sanity checks which prevent input-related runtime errors.
 
@@ -74,7 +81,7 @@ It is not recommended to change any of a *VolumeFader* instance's properties dir
 There are a couple of internal methods of which some might come in handy to be used manually in particular cases. All of them are meant to be called on a *VolumeFader* instance.
 
 ###### .stop() & .start()
-- Suspends and resumes the fader. While called internally, these methods can be used to manually stop the fader from altering the media's volume. Note that the internal fade progress is not stopped.
+- Suspends and resumes the fader. While called internally, these methods can be used to manually prevent the fader from altering the media's volume or to avoid a callback to be fired. Note that the internal fade progress is not stopped.
 - Returns the *VolumeFader* instance for chaining.
 
 ###### .scale.volumeToInternal( *level* )
@@ -109,7 +116,8 @@ By default or when setting *fadeScaling* to "logarithmic", the fade covers an am
 let Fader = new VolumeFader( media, { fadeDuration: 2000, fadeScaling: 80 } )
 ```
 
-Note that *fadeScaling* affects transitions between volume levels, not the level itself. For instance, the *targetVolume* specified for *fadeTo()* is a linear [volume](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volume) level as known from [media](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement) elements. Volume levels from different scales must be converted to linear. Say you're using the default logarithmic scale and you'd like to fade to -30 dB, that is 50% of the 60 dB range. The method *scale.internalToVolume()* of your fader instance will map it you:
+Note that *fadeScaling* affects transitions between volume levels, not the level itself. For instance, the *targetVolume* specified for *fadeTo()* is a linear [volume](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volume) level as known from [media](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement) elements. Volume levels from different scales must be converted to linear.
+Say you're using the default logarithmic scale and you'd like to fade to -30 dB, that is half way of the 60 dB scale. The method *scale.internalToVolume()* treats 0.5 as a point on the logarithmic scale and maps it to a linear volume scale:
 ```
 let Fader = new VolumeFader( media )
 Fader.fadeTo( Fader.scale.internalToVolume( 0.5 ) )
