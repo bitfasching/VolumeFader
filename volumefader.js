@@ -87,8 +87,8 @@
             {
                 // pass levels unchanged
                 this.scale = {
-                    linearToVolume: (level) => level,
-                    volumeToLinear: (level) => level
+                    internalToVolume: (level) => level,
+                    volumeToInternal: (level) => level
                 }
 
                 // log setting
@@ -120,8 +120,8 @@
 
                 // use exponential/logarithmic scaler for expansion/compression
                 this.scale = {
-                    linearToVolume: (level) => this.exponentialScaler( level, dynamicRange ),
-                    volumeToLinear: (level) => this.logarithmicScaler( level, dynamicRange )
+                    internalToVolume: (level) => this.exponentialScaler( level, dynamicRange ),
+                    volumeToInternal: (level) => this.logarithmicScaler( level, dynamicRange )
                 }
 
                 // log setting if not default
@@ -242,10 +242,10 @@
             // define new fade
             this.fade =
             {
-                // volume start and end point on linear scale
+                // volume start and end point on internal fading scale
                 volume: {
-                    start: this.scale.volumeToLinear( this.media.volume ),
-                    end: this.scale.volumeToLinear( targetVolume )
+                    start: this.scale.volumeToInternal( this.media.volume ),
+                    end: this.scale.volumeToInternal( targetVolume )
                 },
                 // time start and end point
                 time: {
@@ -292,11 +292,11 @@
                     // compute current fade progress
                     let progress = ( now - this.fade.time.start ) / ( this.fade.time.end - this.fade.time.start )
 
-                    // compute current linear level
+                    // compute current level on internal scale
                     let level = progress * ( this.fade.volume.end - this.fade.volume.start ) + this.fade.volume.start
 
-                    // scale fade level to volume level and apply to media element
-                    this.media.volume = this.scale.linearToVolume( level )
+                    // map fade level to volume level and apply it to media element
+                    this.media.volume = this.scale.internalToVolume( level )
 
                     // schedule next update
                     root.requestAnimationFrame( this.updateVolume.bind( this ) )
@@ -307,7 +307,7 @@
                     this.logger && this.logger( "Fade to " + String(this.fade.volume.end) + " complete." )
 
                     // time is up, jump to target volume
-                    this.media.volume = this.scale.linearToVolume( this.fade.volume.end )
+                    this.media.volume = this.scale.internalToVolume( this.fade.volume.end )
 
                     // set fader to be inactive
                     this.active = false
