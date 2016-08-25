@@ -229,8 +229,9 @@
         /**
          * Define a new fade and start fading.
          *
-         * @param {Number} targetVolume - linear level to fade to (0…1)
+         * @param {Number} targetVolume - level to fade to in the range 0…1
          * @param {Function} callback - (optional) function to be called when fade is complete
+         * @throws {TypeError} if targetVolume is not in the range 0…1
          * @return {Object} VolumeFader instance for chaining
          */
         fadeTo( targetVolume, callback )
